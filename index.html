@@ -677,18 +677,18 @@
       <div class="loc-option" id="locManual" onclick="setLocMode('manual')">
         <span class="loc-icon">✏️</span>
         <span class="loc-label">Manual</span>
-        <span class="loc-sub">Digitar endereço</span>
+        <span class="loc-sub">Escolher bairro</span>
       </div>
     </div>
+
+    <div id="gpsStatus" style="display:none; margin-top:10px; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; font-size:13px; color:var(--muted);"></div>
+
     <div id="manualInputWrap" style="display:none; margin-top:12px;">
-      <div class="search-wrap">
-        <div class="addr-input-row">
-          <input type="text" id="addrInput" placeholder="Ex: Rua dos Tamoios, 232, BH" autocomplete="off" />
-          <button id="addrSearchBtn" onclick="searchAddress()">🔍</button>
-        </div>
-        <div class="bairro-suggestions" id="addrSuggestions"></div>
-      </div>
-      <div class="selected-bairro" id="selectedAddrDisplay" style="display:none"></div>
+      <input type="text" id="addrInput" placeholder="Digite seu bairro..." autocomplete="off"
+        oninput="filterAddrSuggestions(this.value)"
+        style="width:100%; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:14px 16px; font-size:15px; color:var(--foam); font-family:'DM Sans',sans-serif; outline:none; box-sizing:border-box;" />
+      <div id="addrSuggestions" style="background:var(--card2); border:1.5px solid var(--border); border-radius:12px; margin-top:4px; overflow:hidden; max-height:220px; overflow-y:auto; display:none;"></div>
+      <div id="selectedAddrDisplay" style="display:none; margin-top:8px; background:#1a2e1a; border:1.5px solid var(--green); border-radius:12px; padding:12px 16px; font-size:13px; color:#6fcf97;"></div>
     </div>
   </div>
 
@@ -1002,11 +1002,14 @@ function safeSet(key, val) {
 
 let visitedBars = new Set(safeGet('visitedBars'));
 
-// Init
+// Pede GPS imediatamente ao carregar
 document.addEventListener('DOMContentLoaded', () => {
   buildRegionFilter();
   document.getElementById('barCountBadge').textContent = `🍺 ${BARS.length} bares`;
   updateVisitedCount();
+  // Mostra status GPS e já solicita
+  document.getElementById('gpsStatus').style.display = 'block';
+  tryGPS();
 });
 
 function updateVisitedCount() {
@@ -1076,108 +1079,25 @@ function setLocMode(mode) {
   document.getElementById('locAuto').classList.toggle('active', mode === 'auto');
   document.getElementById('locManual').classList.toggle('active', mode === 'manual');
   document.getElementById('manualInputWrap').style.display = mode === 'manual' ? 'block' : 'none';
-  if (mode === 'auto') { manualBairro = null; }
+  document.getElementById('gpsStatus').style.display = mode === 'auto' ? 'block' : 'none';
+  if (mode === 'auto') { manualBairro = null; userLat = null; userLng = null; tryGPS(); }
 }
 
-function filterBairros(val) {} // kept for compatibility
-
-async function searchAddress() {
-  const input = document.getElementById('addrInput');
-  const btn = document.getElementById('addrSearchBtn');
-  const sugg = document.getElementById('addrSuggestions');
-  const val = input.value.trim();
-
-  if (!val) { showToast('✏️ Digite um endereço!'); return; }
-
-  btn.classList.add('loading');
-  btn.textContent = '⏳';
-  sugg.innerHTML = `<div class="addr-searching">🔍 Buscando endereço...</div>`;
-
-  try {
-    const query = encodeURIComponent(val + ', Belo Horizonte, MG, Brasil');
-    const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=5&countrycodes=br&addressdetails=1`;
-    const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
-    const data = await res.json();
-
-    if (!data.length) {
-      sugg.innerHTML = `<div class="addr-searching">❌ Endereço não encontrado. Tente ser mais específico.</div>`;
-      btn.classList.remove('loading');
-      btn.textContent = '🔍';
-      return;
-    }
-
-    sugg.innerHTML = data.map((item, i) => {
-      const label = item.display_name.split(',').slice(0, 3).join(',');
-      return `<div class="bairro-item" onclick="selectAddress(${item.lat}, ${item.lon}, '${label.replace(/'/g, "\\'")}')">
-        📍 ${label}
-      </div>`;
-    }).join('');
-
-  } catch(e) {
-    sugg.innerHTML = `<div class="addr-searching">⚠️ Sem conexão. Tente o GPS ou selecione manualmente.</div>`;
-    // Fallback: show bairro picker
-    showBairroPicker();
-  }
-
-  btn.classList.remove('loading');
-  btn.textContent = '🔍';
-}
-
-function selectAddress(lat, lon, label) {
-  userLat = parseFloat(lat);
-  userLng = parseFloat(lon);
-  manualBairro = label;
-  document.getElementById('addrInput').value = label;
-  document.getElementById('addrSuggestions').innerHTML = '';
-  const display = document.getElementById('selectedAddrDisplay');
-  display.style.display = 'flex';
-  display.innerHTML = `✅ <strong>${label}</strong>`;
-}
-
-function showBairroPicker() {
-  const sugg = document.getElementById('addrSuggestions');
-  const bairros = Object.keys(BAIRRO_COORDS).sort();
-  sugg.innerHTML = `<div class="addr-searching" style="text-align:left;padding-bottom:4px">Selecione seu bairro:</div>` +
-    bairros.map(b => `<div class="bairro-item" onclick="selectBairroFallback('${b}')">${b}</div>`).join('');
-}
-
-function selectBairroFallback(bairro) {
-  const [lat, lng] = BAIRRO_COORDS[bairro];
-  selectAddress(lat, lng, bairro);
-}
-
-// Allow pressing Enter to search
-document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(() => {
-    const input = document.getElementById('addrInput');
-    if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') searchAddress(); });
-  }, 500);
-});
-
-function selectBairro(bairro) { selectBairroFallback(bairro); } // compatibility
-
-
-function buildRoute() {
-  // Manual mode
-  if (locMode === 'manual') {
-    if (!manualBairro || !userLat) {
-      showToast('✏️ Digite e selecione seu endereço!');
-      return;
-    }
-    document.getElementById('loadingScreen').classList.add('show');
-    setTimeout(generateRoute, 800);
-    return;
-  }
-
-  // Auto GPS mode
-  const loading = document.getElementById('loadingScreen');
-  loading.classList.add('show');
+function tryGPS() {
+  const status = document.getElementById('gpsStatus');
+  if (!status) return;
+  status.style.display = 'block';
+  status.style.background = 'var(--card)';
+  status.style.border = '1.5px solid var(--border)';
+  status.style.borderRadius = '12px';
+  status.style.padding = '12px 16px';
+  status.style.fontSize = '13px';
+  status.innerHTML = '📡 Solicitando sua localização...';
+  status.style.color = 'var(--muted)';
 
   if (!navigator.geolocation) {
-    userLat = -19.9167;
-    userLng = -43.9345;
-    showToast('📍 GPS não disponível, usando centro de BH');
-    generateRoute();
+    status.innerHTML = '❌ GPS não disponível neste navegador. Use o modo <strong>Manual</strong>.';
+    status.style.color = '#e74c3c';
     return;
   }
 
@@ -1185,15 +1105,109 @@ function buildRoute() {
     pos => {
       userLat = pos.coords.latitude;
       userLng = pos.coords.longitude;
+      status.innerHTML = `✅ Localização capturada! (${userLat.toFixed(4)}, ${userLng.toFixed(4)})`;
+      status.style.color = '#6fcf97';
+      status.style.border = '1.5px solid var(--green)';
+      status.style.background = '#1a2e1a';
+    },
+    err => {
+      const msgs = {
+        1: 'Permissão negada pelo usuário.',
+        2: 'Posição indisponível.',
+        3: 'Tempo esgotado.'
+      };
+      status.innerHTML = `❌ ${msgs[err.code] || 'Erro desconhecido.'} Use o modo <strong>Manual</strong> ou <button onclick="tryGPS()" style="background:var(--amber);border:none;border-radius:6px;padding:2px 8px;font-size:12px;cursor:pointer;color:#0f0700;font-weight:600;">Tentar novamente</button>`;
+      status.style.color = '#e74c3c';
+      status.style.border = '1.5px solid #e74c3c';
+      userLat = null;
+      userLng = null;
+    },
+    { timeout: 12000, enableHighAccuracy: true, maximumAge: 30000 }
+  );
+}
+
+function filterAddrSuggestions(val) {
+  const sugg = document.getElementById('addrSuggestions');
+  if (!val.trim()) { sugg.style.display = 'none'; sugg.innerHTML = ''; return; }
+
+  const matches = Object.keys(BAIRRO_COORDS)
+    .filter(b => b.toLowerCase().includes(val.toLowerCase()))
+    .sort()
+    .slice(0, 10);
+
+  if (!matches.length) {
+    sugg.style.display = 'block';
+    sugg.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted);">Nenhum bairro encontrado</div>';
+    return;
+  }
+
+  sugg.style.display = 'block';
+  sugg.innerHTML = matches.map(b =>
+    `<div class="bairro-item" onclick="selectManualLocation(${BAIRRO_COORDS[b][0]}, ${BAIRRO_COORDS[b][1]}, '${b}')">
+      🏘️ ${b}
+    </div>`
+  ).join('');
+}
+
+function selectManualLocation(lat, lng, label) {
+  userLat = parseFloat(lat);
+  userLng = parseFloat(lng);
+  manualBairro = label;
+  document.getElementById('addrInput').value = label;
+  document.getElementById('addrSuggestions').style.display = 'none';
+  document.getElementById('addrSuggestions').innerHTML = '';
+  const display = document.getElementById('selectedAddrDisplay');
+  display.style.display = 'block';
+  display.innerHTML = '✅ Bairro selecionado: <strong>' + label + '</strong>';
+}
+
+function filterBairros() {}
+function selectBairro(b) { selectManualLocation(BAIRRO_COORDS[b][0], BAIRRO_COORDS[b][1], b); }
+function selectBairroFallback(b) { selectBairro(b); }
+async function searchAddress() {}
+
+
+function buildRoute() {
+  // Manual mode
+  if (locMode === 'manual') {
+    if (!manualBairro || !userLat) {
+      showToast('✏️ Selecione seu bairro primeiro!');
+      return;
+    }
+    document.getElementById('loadingScreen').classList.add('show');
+    setTimeout(generateRoute, 600);
+    return;
+  }
+
+  // Auto GPS mode — usa coords já capturadas ou tenta de novo
+  document.getElementById('loadingScreen').classList.add('show');
+
+  if (userLat && userLng) {
+    // GPS já capturado, usa direto
+    generateRoute();
+    return;
+  }
+
+  if (!navigator.geolocation) {
+    userLat = -19.9167; userLng = -43.9345;
+    showToast('📍 GPS indisponível, usando centro de BH');
+    generateRoute();
+    return;
+  }
+
+  // Última tentativa de GPS
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      userLat = pos.coords.latitude;
+      userLng = pos.coords.longitude;
       generateRoute();
     },
     err => {
-      userLat = -19.9167;
-      userLng = -43.9345;
-      showToast('📍 Usando centro de BH como referência');
+      userLat = -19.9167; userLng = -43.9345;
+      showToast('📍 GPS falhou, usando centro de BH');
       generateRoute();
     },
-    { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
+    { timeout: 12000, enableHighAccuracy: true, maximumAge: 30000 }
   );
 }
 
