@@ -658,6 +658,10 @@
       <div class="qty-btn selected" onclick="selectQty(4, this)"><span class="num">4</span><span class="lbl">bares</span></div>
       <div class="qty-btn" onclick="selectQty(5, this)"><span class="num">5</span><span class="lbl">bares</span></div>
       <div class="qty-btn" onclick="selectQty(6, this)"><span class="num">6</span><span class="lbl">bares</span></div>
+      <div class="qty-btn" onclick="selectQty(7, this)"><span class="num">7</span><span class="lbl">bares</span></div>
+      <div class="qty-btn" onclick="selectQty(8, this)"><span class="num">8</span><span class="lbl">bares</span></div>
+      <div class="qty-btn" onclick="selectQty(9, this)"><span class="num">9</span><span class="lbl">bares</span></div>
+      <div class="qty-btn" onclick="selectQty(10, this)"><span class="num">10</span><span class="lbl">bares</span></div>
     </div>
   </div>
 
@@ -686,7 +690,7 @@
     <div id="manualInputWrap" style="display:none; margin-top:12px;">
       <div style="display:flex; gap:8px;">
         <input type="text" id="addrInput"
-          placeholder="Ex: Rua Bernardo Cisneiros, 715"
+          placeholder="Ex: Av. Amazonas, 4649, Nova Suíça"
           autocomplete="off"
           oninput="onAddrInput(this.value)"
           style="flex:1; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:14px 16px; font-size:15px; color:var(--foam); font-family:'DM Sans',sans-serif; outline:none; box-sizing:border-box;" />
@@ -1255,22 +1259,21 @@ function generateRoute() {
   if (selectedRegion) pool = pool.filter(b => b.bairro === selectedRegion);
   if (pool.length < selectedQty) pool = unvisited.length > 0 ? unvisited : [...BARS];
 
-  // Add distance to each bar using exact coordinates
+  // Add exact distance to each bar
   pool = pool.map(b => {
     const [blat, blng] = getBairroCoords(b);
     return { ...b, lat: blat, lng: blng, distance: dist(userLat, userLng, blat, blng) };
   });
 
-  // Sort by distance, pick nearest N*2, then optimize route
-  pool.sort((a, b) => a.distance - b.distance);
-  let candidates = pool.slice(0, Math.min(selectedQty * 3, pool.length));
-
-  // Nearest neighbor from user position
+  // Nearest neighbor algorithm usando TODOS os bares disponíveis
+  // Começa da posição do usuário e sempre pega o bar mais próximo do ponto atual
+  let remaining = [...pool];
   let route = [];
   let curLat = userLat, curLng = userLng;
-  while (route.length < selectedQty && candidates.length > 0) {
-    candidates.sort((a, b) => dist(curLat, curLng, a.lat, a.lng) - dist(curLat, curLng, b.lat, b.lng));
-    const next = candidates.shift();
+
+  while (route.length < selectedQty && remaining.length > 0) {
+    remaining.sort((a, b) => dist(curLat, curLng, a.lat, a.lng) - dist(curLat, curLng, b.lat, b.lng));
+    const next = remaining.shift();
     route.push(next);
     curLat = next.lat;
     curLng = next.lng;
