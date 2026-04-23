@@ -1010,17 +1010,64 @@ function safeSet(key, val) {
 }
 
 let visitedBars = new Set(safeGet('visitedBars'));
+let geocodedCoords = safeGet('geocodedCoords') || {};
 
 document.addEventListener('DOMContentLoaded', () => {
   buildRegionFilter();
   document.getElementById('barCountBadge').textContent = `🍺 ${BARS.length} bares`;
   updateVisitedCount();
-  // Solicita GPS imediatamente
   tryGPS();
-  // Enter no campo de endereço
   const inp = document.getElementById('addrInput');
   if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') searchGeoapify(); });
+  // Geocodifica bares em background se ainda não foi feito
+  geocodeBarsInBackground();
 });
+
+async function geocodeBarsInBackground() {
+  const cached = safeGet('geocodedCoords');
+  if (cached && Object.keys(cached).length > 100) {
+    // Já geocodificado, aplica no BARS
+    applyGeocodedCoords(cached);
+    return;
+  }
+
+  const coords = {};
+  const status = document.getElementById('gpsStatus');
+  let count = 0;
+
+  for (const bar of BARS) {
+    try {
+      const query = encodeURIComponent(`${bar.addr}, Belo Horizonte, MG`);
+      const url = `https://api.geoapify.com/v1/geocode/search?text=${query}&lang=pt&limit=1&filter=countrycode:br&apiKey=${GEOAPIFY_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.features && data.features.length) {
+        const [lng, lat] = data.features[0].geometry.coordinates;
+        coords[bar.name] = [lat, lng];
+      }
+      count++;
+      if (count % 10 === 0 && status && locMode === 'auto') {
+        status.innerHTML = `🗺️ Atualizando coordenadas dos bares... ${count}/${BARS.length}`;
+      }
+      await new Promise(r => setTimeout(r, 200)); // respeita rate limit
+    } catch(e) { /* continua */ }
+  }
+
+  if (Object.keys(coords).length > 50) {
+    safeSet('geocodedCoords', coords);
+    applyGeocodedCoords(coords);
+    showToast(`✅ Coordenadas de ${Object.keys(coords).length} bares atualizadas!`);
+  }
+}
+
+function applyGeocodedCoords(coords) {
+  BARS.forEach(bar => {
+    if (coords[bar.name]) {
+      bar.lat = coords[bar.name][0];
+      bar.lng = coords[bar.name][1];
+    }
+  });
+}
 
 function updateVisitedCount() {
   const count = visitedBars.size;
