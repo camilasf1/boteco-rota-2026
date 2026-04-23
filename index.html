@@ -951,7 +951,16 @@ let userLat = null;
 let userLng = null;
 let locMode = 'auto';
 let manualBairro = null;
-let visitedBars = new Set(JSON.parse(localStorage.getItem('visitedBars') || '[]'));
+
+// Safe localStorage
+function safeGet(key) {
+  try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) { return []; }
+}
+function safeSet(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+}
+
+let visitedBars = new Set(safeGet('visitedBars'));
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
@@ -1070,6 +1079,14 @@ function buildRoute() {
   const loading = document.getElementById('loadingScreen');
   loading.classList.add('show');
 
+  if (!navigator.geolocation) {
+    userLat = -19.9167;
+    userLng = -43.9345;
+    showToast('📍 GPS não disponível, usando centro de BH');
+    generateRoute();
+    return;
+  }
+
   navigator.geolocation.getCurrentPosition(
     pos => {
       userLat = pos.coords.latitude;
@@ -1077,13 +1094,12 @@ function buildRoute() {
       generateRoute();
     },
     err => {
-      // fallback: BH center
       userLat = -19.9167;
       userLng = -43.9345;
       showToast('📍 Usando centro de BH como referência');
       generateRoute();
     },
-    { timeout: 6000 }
+    { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
   );
 }
 
@@ -1167,7 +1183,7 @@ function toggleVisit(i) {
   } else {
     visitedBars.delete(barName);
   }
-  localStorage.setItem('visitedBars', JSON.stringify([...visitedBars]));
+  safeSet('visitedBars', [...visitedBars]);
   updateVisitedCount();
   renderRoute();
 }
@@ -1175,7 +1191,7 @@ function toggleVisit(i) {
 function clearVisited() {
   if (!confirm('Limpar todos os bares visitados?')) return;
   visitedBars.clear();
-  localStorage.removeItem('visitedBars');
+  safeSet('visitedBars', []);
   updateVisitedCount();
   showToast('🗑️ Histórico limpo!');
 }
