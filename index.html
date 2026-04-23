@@ -677,17 +677,22 @@
       <div class="loc-option" id="locManual" onclick="setLocMode('manual')">
         <span class="loc-icon">✏️</span>
         <span class="loc-label">Manual</span>
-        <span class="loc-sub">Escolher bairro</span>
+        <span class="loc-sub">Digitar endereço</span>
       </div>
     </div>
 
-    <div id="gpsStatus" style="display:none; margin-top:10px; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; font-size:13px; color:var(--muted);"></div>
+    <div id="gpsStatus" style="display:block; margin-top:10px; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:12px 16px; font-size:13px; color:var(--muted);"></div>
 
     <div id="manualInputWrap" style="display:none; margin-top:12px;">
-      <input type="text" id="addrInput" placeholder="Digite seu bairro..." autocomplete="off"
-        oninput="filterAddrSuggestions(this.value)"
-        style="width:100%; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:14px 16px; font-size:15px; color:var(--foam); font-family:'DM Sans',sans-serif; outline:none; box-sizing:border-box;" />
-      <div id="addrSuggestions" style="background:var(--card2); border:1.5px solid var(--border); border-radius:12px; margin-top:4px; overflow:hidden; max-height:220px; overflow-y:auto; display:none;"></div>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="addrInput"
+          placeholder="Ex: Rua Bernardo Cisneiros, 715"
+          autocomplete="off"
+          oninput="onAddrInput(this.value)"
+          style="flex:1; background:var(--card); border:1.5px solid var(--border); border-radius:12px; padding:14px 16px; font-size:15px; color:var(--foam); font-family:'DM Sans',sans-serif; outline:none; box-sizing:border-box;" />
+        <button onclick="searchGeoapify()" style="background:var(--amber); border:none; border-radius:12px; padding:0 18px; font-size:18px; cursor:pointer; flex-shrink:0;">🔍</button>
+      </div>
+      <div id="addrSuggestions" style="display:none; background:var(--card2); border:1.5px solid var(--border); border-radius:12px; margin-top:4px; overflow:hidden; max-height:240px; overflow-y:auto;"></div>
       <div id="selectedAddrDisplay" style="display:none; margin-top:8px; background:#1a2e1a; border:1.5px solid var(--green); border-radius:12px; padding:12px 16px; font-size:13px; color:#6fcf97;"></div>
     </div>
   </div>
@@ -1002,14 +1007,15 @@ function safeSet(key, val) {
 
 let visitedBars = new Set(safeGet('visitedBars'));
 
-// Pede GPS imediatamente ao carregar
 document.addEventListener('DOMContentLoaded', () => {
   buildRegionFilter();
   document.getElementById('barCountBadge').textContent = `🍺 ${BARS.length} bares`;
   updateVisitedCount();
-  // Mostra status GPS e já solicita
-  document.getElementById('gpsStatus').style.display = 'block';
+  // Solicita GPS imediatamente
   tryGPS();
+  // Enter no campo de endereço
+  const inp = document.getElementById('addrInput');
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') searchGeoapify(); });
 });
 
 function updateVisitedCount() {
@@ -1074,6 +1080,9 @@ function getBairroCoords(bar) {
   return BAIRRO_COORDS[bairro] || [-19.9167, -43.9345];
 }
 
+const GEOAPIFY_KEY = 'f20404eb8bb2428d863388d097295ca3';
+let addrTimer = null;
+
 function setLocMode(mode) {
   locMode = mode;
   document.getElementById('locAuto').classList.toggle('active', mode === 'auto');
@@ -1081,22 +1090,19 @@ function setLocMode(mode) {
   document.getElementById('manualInputWrap').style.display = mode === 'manual' ? 'block' : 'none';
   document.getElementById('gpsStatus').style.display = mode === 'auto' ? 'block' : 'none';
   if (mode === 'auto') { manualBairro = null; userLat = null; userLng = null; tryGPS(); }
+  if (mode === 'manual') { userLat = null; userLng = null; }
 }
 
 function tryGPS() {
   const status = document.getElementById('gpsStatus');
   if (!status) return;
-  status.style.display = 'block';
-  status.style.background = 'var(--card)';
-  status.style.border = '1.5px solid var(--border)';
-  status.style.borderRadius = '12px';
-  status.style.padding = '12px 16px';
-  status.style.fontSize = '13px';
   status.innerHTML = '📡 Solicitando sua localização...';
   status.style.color = 'var(--muted)';
+  status.style.borderColor = 'var(--border)';
+  status.style.background = 'var(--card)';
 
   if (!navigator.geolocation) {
-    status.innerHTML = '❌ GPS não disponível neste navegador. Use o modo <strong>Manual</strong>.';
+    status.innerHTML = '❌ GPS não disponível. Use o modo <strong>Manual</strong>.';
     status.style.color = '#e74c3c';
     return;
   }
@@ -1105,48 +1111,77 @@ function tryGPS() {
     pos => {
       userLat = pos.coords.latitude;
       userLng = pos.coords.longitude;
-      status.innerHTML = `✅ Localização capturada! (${userLat.toFixed(4)}, ${userLng.toFixed(4)})`;
+      status.innerHTML = `✅ Localização capturada com sucesso!`;
       status.style.color = '#6fcf97';
-      status.style.border = '1.5px solid var(--green)';
+      status.style.borderColor = 'var(--green)';
       status.style.background = '#1a2e1a';
     },
     err => {
-      const msgs = {
-        1: 'Permissão negada pelo usuário.',
-        2: 'Posição indisponível.',
-        3: 'Tempo esgotado.'
-      };
-      status.innerHTML = `❌ ${msgs[err.code] || 'Erro desconhecido.'} Use o modo <strong>Manual</strong> ou <button onclick="tryGPS()" style="background:var(--amber);border:none;border-radius:6px;padding:2px 8px;font-size:12px;cursor:pointer;color:#0f0700;font-weight:600;">Tentar novamente</button>`;
+      const msgs = { 1: 'Permissão negada.', 2: 'Posição indisponível.', 3: 'Tempo esgotado.' };
+      status.innerHTML = `❌ ${msgs[err.code] || 'Erro.'} Use o modo <strong>Manual</strong> ou <button onclick="tryGPS()" style="background:var(--amber);border:none;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;color:#0f0700;font-weight:600;">Tentar novamente</button>`;
       status.style.color = '#e74c3c';
-      status.style.border = '1.5px solid #e74c3c';
-      userLat = null;
-      userLng = null;
+      status.style.borderColor = '#e74c3c';
+      userLat = null; userLng = null;
     },
     { timeout: 12000, enableHighAccuracy: true, maximumAge: 30000 }
   );
 }
 
-function filterAddrSuggestions(val) {
+function onAddrInput(val) {
+  clearTimeout(addrTimer);
   const sugg = document.getElementById('addrSuggestions');
-  if (!val.trim()) { sugg.style.display = 'none'; sugg.innerHTML = ''; return; }
-
-  const matches = Object.keys(BAIRRO_COORDS)
-    .filter(b => b.toLowerCase().includes(val.toLowerCase()))
-    .sort()
-    .slice(0, 10);
-
-  if (!matches.length) {
-    sugg.style.display = 'block';
-    sugg.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted);">Nenhum bairro encontrado</div>';
-    return;
-  }
-
+  if (!val.trim() || val.length < 3) { sugg.style.display = 'none'; return; }
   sugg.style.display = 'block';
-  sugg.innerHTML = matches.map(b =>
-    `<div class="bairro-item" onclick="selectManualLocation(${BAIRRO_COORDS[b][0]}, ${BAIRRO_COORDS[b][1]}, '${b}')">
-      🏘️ ${b}
-    </div>`
-  ).join('');
+  sugg.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted);">🔍 Buscando...</div>';
+  addrTimer = setTimeout(() => searchGeoapify(val), 500);
+}
+
+async function searchGeoapify(query) {
+  const val = query || document.getElementById('addrInput').value.trim();
+  if (!val || val.length < 3) return;
+
+  const sugg = document.getElementById('addrSuggestions');
+  sugg.style.display = 'block';
+  sugg.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted);">🔍 Buscando endereço...</div>';
+
+  try {
+    const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(val + ', Belo Horizonte')}&lang=pt&limit=5&type=street&filter=countrycode:br&apiKey=${GEOAPIFY_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const features = data.features || [];
+
+    if (!features.length) {
+      // Try without type filter
+      const url2 = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(val + ', Belo Horizonte, MG')}&lang=pt&limit=5&filter=countrycode:br&apiKey=${GEOAPIFY_KEY}`;
+      const res2 = await fetch(url2);
+      const data2 = await res2.json();
+      const features2 = data2.features || [];
+
+      if (!features2.length) {
+        sugg.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted);">❌ Endereço não encontrado. Tente ser mais específico.</div>';
+        return;
+      }
+      renderSuggestions(features2);
+      return;
+    }
+    renderSuggestions(features);
+  } catch(e) {
+    sugg.innerHTML = '<div style="padding:12px 16px;font-size:13px;color:var(--muted);">⚠️ Erro na busca. Verifique sua conexão.</div>';
+  }
+}
+
+function renderSuggestions(features) {
+  const sugg = document.getElementById('addrSuggestions');
+  sugg.innerHTML = features.map(f => {
+    const p = f.properties;
+    const label = [p.street, p.housenumber, p.suburb || p.neighbourhood || p.district].filter(Boolean).join(', ');
+    const lat = f.geometry.coordinates[1];
+    const lng = f.geometry.coordinates[0];
+    return `<div class="bairro-item" onclick="selectManualLocation(${lat}, ${lng}, '${label.replace(/'/g,"\\'")}')">
+      📍 ${label || p.formatted}
+    </div>`;
+  }).join('');
 }
 
 function selectManualLocation(lat, lng, label) {
@@ -1155,16 +1190,16 @@ function selectManualLocation(lat, lng, label) {
   manualBairro = label;
   document.getElementById('addrInput').value = label;
   document.getElementById('addrSuggestions').style.display = 'none';
-  document.getElementById('addrSuggestions').innerHTML = '';
   const display = document.getElementById('selectedAddrDisplay');
   display.style.display = 'block';
-  display.innerHTML = '✅ Bairro selecionado: <strong>' + label + '</strong>';
+  display.innerHTML = '✅ Localização: <strong>' + label + '</strong>';
 }
 
+function filterAddrSuggestions(val) { onAddrInput(val); }
 function filterBairros() {}
 function selectBairro(b) { selectManualLocation(BAIRRO_COORDS[b][0], BAIRRO_COORDS[b][1], b); }
 function selectBairroFallback(b) { selectBairro(b); }
-async function searchAddress() {}
+async function searchAddress() { searchGeoapify(); }
 
 
 function buildRoute() {
