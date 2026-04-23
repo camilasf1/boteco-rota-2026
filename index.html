@@ -513,7 +513,44 @@
   }
 
 
-  /* SWAP CONFIRM MODAL */
+  .addr-input-row {
+    display: flex;
+    gap: 8px;
+  }
+  .addr-input-row input {
+    flex: 1;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 15px;
+    color: var(--foam);
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .addr-input-row input:focus { border-color: var(--amber); }
+  .addr-input-row input::placeholder { color: var(--muted); }
+  .addr-input-row button {
+    background: var(--amber);
+    border: none;
+    border-radius: 12px;
+    padding: 0 18px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .addr-input-row button:active { transform: scale(0.95); }
+  .addr-input-row button.loading { opacity: 0.6; pointer-events: none; }
+  .addr-searching {
+    text-align: center;
+    padding: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+
   .modal-overlay {
     position: fixed;
     inset: 0;
@@ -640,15 +677,18 @@
       <div class="loc-option" id="locManual" onclick="setLocMode('manual')">
         <span class="loc-icon">✏️</span>
         <span class="loc-label">Manual</span>
-        <span class="loc-sub">Digitar bairro</span>
+        <span class="loc-sub">Digitar endereço</span>
       </div>
     </div>
     <div id="manualInputWrap" style="display:none; margin-top:12px;">
       <div class="search-wrap">
-        <input type="text" id="bairroInput" placeholder="Digite seu bairro..." oninput="filterBairros(this.value)" autocomplete="off" />
-        <div class="bairro-suggestions" id="bairroSuggestions"></div>
+        <div class="addr-input-row">
+          <input type="text" id="addrInput" placeholder="Ex: Rua dos Tamoios, 232, BH" autocomplete="off" />
+          <button id="addrSearchBtn" onclick="searchAddress()">🔍</button>
+        </div>
+        <div class="bairro-suggestions" id="addrSuggestions"></div>
       </div>
-      <div class="selected-bairro" id="selectedBairroDisplay" style="display:none"></div>
+      <div class="selected-bairro" id="selectedAddrDisplay" style="display:none"></div>
     </div>
   </div>
 
@@ -1039,35 +1079,89 @@ function setLocMode(mode) {
   if (mode === 'auto') { manualBairro = null; }
 }
 
-function filterBairros(val) {
-  const sugg = document.getElementById('bairroSuggestions');
-  if (!val.trim()) { sugg.innerHTML = ''; return; }
-  const matches = Object.keys(BAIRRO_COORDS)
-    .filter(b => b.toLowerCase().includes(val.toLowerCase()))
-    .slice(0, 8);
-  sugg.innerHTML = matches.map(b =>
-    `<div class="bairro-item" onclick="selectBairro('${b}')">${b}</div>`
-  ).join('');
+function filterBairros(val) {} // kept for compatibility
+
+async function searchAddress() {
+  const input = document.getElementById('addrInput');
+  const btn = document.getElementById('addrSearchBtn');
+  const sugg = document.getElementById('addrSuggestions');
+  const val = input.value.trim();
+
+  if (!val) { showToast('✏️ Digite um endereço!'); return; }
+
+  btn.classList.add('loading');
+  btn.textContent = '⏳';
+  sugg.innerHTML = `<div class="addr-searching">🔍 Buscando endereço...</div>`;
+
+  try {
+    const query = encodeURIComponent(val + ', Belo Horizonte, MG, Brasil');
+    const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=5&countrycodes=br&addressdetails=1`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+    const data = await res.json();
+
+    if (!data.length) {
+      sugg.innerHTML = `<div class="addr-searching">❌ Endereço não encontrado. Tente ser mais específico.</div>`;
+      btn.classList.remove('loading');
+      btn.textContent = '🔍';
+      return;
+    }
+
+    sugg.innerHTML = data.map((item, i) => {
+      const label = item.display_name.split(',').slice(0, 3).join(',');
+      return `<div class="bairro-item" onclick="selectAddress(${item.lat}, ${item.lon}, '${label.replace(/'/g, "\\'")}')">
+        📍 ${label}
+      </div>`;
+    }).join('');
+
+  } catch(e) {
+    sugg.innerHTML = `<div class="addr-searching">⚠️ Sem conexão. Tente o GPS ou selecione manualmente.</div>`;
+    // Fallback: show bairro picker
+    showBairroPicker();
+  }
+
+  btn.classList.remove('loading');
+  btn.textContent = '🔍';
 }
 
-function selectBairro(bairro) {
-  manualBairro = bairro;
-  const [lat, lng] = BAIRRO_COORDS[bairro];
-  userLat = lat;
-  userLng = lng;
-  document.getElementById('bairroInput').value = bairro;
-  document.getElementById('bairroSuggestions').innerHTML = '';
-  const display = document.getElementById('selectedBairroDisplay');
+function selectAddress(lat, lon, label) {
+  userLat = parseFloat(lat);
+  userLng = parseFloat(lon);
+  manualBairro = label;
+  document.getElementById('addrInput').value = label;
+  document.getElementById('addrSuggestions').innerHTML = '';
+  const display = document.getElementById('selectedAddrDisplay');
   display.style.display = 'flex';
-  display.innerHTML = `✅ Bairro selecionado: <strong>${bairro}</strong>`;
+  display.innerHTML = `✅ <strong>${label}</strong>`;
 }
+
+function showBairroPicker() {
+  const sugg = document.getElementById('addrSuggestions');
+  const bairros = Object.keys(BAIRRO_COORDS).sort();
+  sugg.innerHTML = `<div class="addr-searching" style="text-align:left;padding-bottom:4px">Selecione seu bairro:</div>` +
+    bairros.map(b => `<div class="bairro-item" onclick="selectBairroFallback('${b}')">${b}</div>`).join('');
+}
+
+function selectBairroFallback(bairro) {
+  const [lat, lng] = BAIRRO_COORDS[bairro];
+  selectAddress(lat, lng, bairro);
+}
+
+// Allow pressing Enter to search
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const input = document.getElementById('addrInput');
+    if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') searchAddress(); });
+  }, 500);
+});
+
+function selectBairro(bairro) { selectBairroFallback(bairro); } // compatibility
 
 
 function buildRoute() {
   // Manual mode
   if (locMode === 'manual') {
-    if (!manualBairro) {
-      showToast('✏️ Digite e selecione seu bairro!');
+    if (!manualBairro || !userLat) {
+      showToast('✏️ Digite e selecione seu endereço!');
       return;
     }
     document.getElementById('loadingScreen').classList.add('show');
