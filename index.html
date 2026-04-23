@@ -432,7 +432,124 @@
     margin-top: 10px;
   }
 
-  /* TOAST */
+  /* LOCATION TOGGLE */
+  .location-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .loc-option {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .loc-option.active {
+    border-color: var(--amber);
+    background: #2a1500;
+  }
+  .loc-icon { font-size: 22px; }
+  .loc-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--foam);
+  }
+  .loc-sub { font-size: 11px; color: var(--muted); }
+  .loc-option.active .loc-label { color: var(--amber); }
+
+  /* MANUAL INPUT */
+  .search-wrap { position: relative; }
+  .search-wrap input {
+    width: 100%;
+    background: var(--card);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 15px;
+    color: var(--foam);
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-wrap input:focus { border-color: var(--amber); }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .bairro-suggestions {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--card2);
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    z-index: 50;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .bairro-item {
+    padding: 12px 16px;
+    font-size: 14px;
+    color: var(--text);
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  .bairro-item:last-child { border-bottom: none; }
+  .bairro-item:active { background: #2a1500; color: var(--amber); }
+  .selected-bairro {
+    background: #1a2e1a;
+    border: 1.5px solid var(--green);
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 14px;
+    color: #6fcf97;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+
+  /* SWAP CONFIRM MODAL */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 300;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+    max-width: 430px;
+    margin: 0 auto;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: all; }
+  .modal-sheet {
+    background: var(--card2);
+    border: 1.5px solid var(--border);
+    border-radius: 24px 24px 0 0;
+    padding: 28px 20px 40px;
+    width: 100%;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .modal-overlay.show .modal-sheet { transform: translateY(0); }
+  .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 100px; margin: 0 auto 20px; }
+  .modal-title { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--foam); margin-bottom: 6px; }
+  .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+  .modal-bar-name { font-weight: 600; color: var(--amber); }
+  .modal-btns { display: flex; flex-direction: column; gap: 10px; }
+  .modal-btn { width: 100%; padding: 16px; border-radius: 14px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s; }
+  .modal-btn:active { transform: scale(0.97); }
+  .modal-btn-confirm { background: var(--amber); color: #0f0700; }
+  .modal-btn-cancel { background: var(--card); border: 1.5px solid var(--border); color: var(--muted); }
+  .btn-recalc { background: #2a1500; border: 1.5px solid var(--amber) !important; color: var(--amber) !important; }
+
   .toast {
     position: fixed;
     bottom: 90px;
@@ -508,6 +625,29 @@
     <div class="region-scroll" id="regionScroll"></div>
   </div>
 
+  <div class="section">
+    <div class="section-title">Sua localização</div>
+    <div class="location-toggle">
+      <div class="loc-option active" id="locAuto" onclick="setLocMode('auto')">
+        <span class="loc-icon">📍</span>
+        <span class="loc-label">Automática</span>
+        <span class="loc-sub">Usar GPS</span>
+      </div>
+      <div class="loc-option" id="locManual" onclick="setLocMode('manual')">
+        <span class="loc-icon">✏️</span>
+        <span class="loc-label">Manual</span>
+        <span class="loc-sub">Digitar bairro</span>
+      </div>
+    </div>
+    <div id="manualInputWrap" style="display:none; margin-top:12px;">
+      <div class="search-wrap">
+        <input type="text" id="bairroInput" placeholder="Digite seu bairro..." oninput="filterBairros(this.value)" autocomplete="off" />
+        <div class="bairro-suggestions" id="bairroSuggestions"></div>
+      </div>
+      <div class="selected-bairro" id="selectedBairroDisplay" style="display:none"></div>
+    </div>
+  </div>
+
   <div class="cta-wrap">
     <button class="cta-btn" onclick="buildRoute()">
       <span class="icon">🗺️</span>
@@ -536,7 +676,34 @@
   <div class="action-buttons">
     <button class="action-btn btn-maps" onclick="openMaps()">🗺️ Abrir no Google Maps</button>
     <button class="action-btn btn-share" onclick="shareRoute()">📲 Compartilhar no WhatsApp</button>
-    <button class="action-btn btn-new" onclick="showScreen('home')">🔄 Montar nova rota</button>
+    <button class="action-btn btn-recalc" onclick="confirmRecalc()">🔄 Recalcular rota</button>
+    <button class="action-btn btn-new" onclick="showScreen('home')">✨ Montar nova rota</button>
+  </div>
+</div>
+
+<!-- MODAL: SWAP CONFIRM -->
+<div class="modal-overlay" id="swapModal" onclick="closeSwapModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Trocar este bar?</div>
+    <div class="modal-sub">Quer trocar <span class="modal-bar-name" id="modalBarName"></span> por outro bar próximo?</div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-confirm" onclick="confirmSwap()">Sim, trocar!</button>
+      <button class="modal-btn modal-btn-cancel" onclick="closeSwapModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RECALC CONFIRM -->
+<div class="modal-overlay" id="recalcModal" onclick="closeRecalcModal(event)">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Recalcular rota?</div>
+    <div class="modal-sub">Isso vai gerar uma lista completamente nova de bares. Sua rota atual será perdida.</div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-confirm" onclick="doRecalc()">Sim, recalcular!</button>
+      <button class="modal-btn modal-btn-cancel" onclick="closeRecalcModal()">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -778,6 +945,8 @@ let selectedRegion = null;
 let currentRoute = [];
 let userLat = null;
 let userLng = null;
+let locMode = 'auto';
+let manualBairro = null;
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
@@ -834,7 +1003,51 @@ function getBairroCoords(bairro) {
   return BAIRRO_COORDS[bairro] || [-19.9167, -43.9345];
 }
 
+function setLocMode(mode) {
+  locMode = mode;
+  document.getElementById('locAuto').classList.toggle('active', mode === 'auto');
+  document.getElementById('locManual').classList.toggle('active', mode === 'manual');
+  document.getElementById('manualInputWrap').style.display = mode === 'manual' ? 'block' : 'none';
+  if (mode === 'auto') { manualBairro = null; }
+}
+
+function filterBairros(val) {
+  const sugg = document.getElementById('bairroSuggestions');
+  if (!val.trim()) { sugg.innerHTML = ''; return; }
+  const matches = Object.keys(BAIRRO_COORDS)
+    .filter(b => b.toLowerCase().includes(val.toLowerCase()))
+    .slice(0, 8);
+  sugg.innerHTML = matches.map(b =>
+    `<div class="bairro-item" onclick="selectBairro('${b}')">${b}</div>`
+  ).join('');
+}
+
+function selectBairro(bairro) {
+  manualBairro = bairro;
+  const [lat, lng] = BAIRRO_COORDS[bairro];
+  userLat = lat;
+  userLng = lng;
+  document.getElementById('bairroInput').value = bairro;
+  document.getElementById('bairroSuggestions').innerHTML = '';
+  const display = document.getElementById('selectedBairroDisplay');
+  display.style.display = 'flex';
+  display.innerHTML = `✅ Bairro selecionado: <strong>${bairro}</strong>`;
+}
+
+
 function buildRoute() {
+  // Manual mode
+  if (locMode === 'manual') {
+    if (!manualBairro) {
+      showToast('✏️ Digite e selecione seu bairro!');
+      return;
+    }
+    document.getElementById('loadingScreen').classList.add('show');
+    setTimeout(generateRoute, 800);
+    return;
+  }
+
+  // Auto GPS mode
   const loading = document.getElementById('loadingScreen');
   loading.classList.add('show');
 
@@ -928,7 +1141,27 @@ function toggleVisit(i) {
   if (currentRoute[i].visited) showToast(`🍺 ${currentRoute[i].name} visitado!`);
 }
 
+let pendingSwapIndex = null;
+
 function swapBar(i) {
+  pendingSwapIndex = i;
+  document.getElementById('modalBarName').textContent = currentRoute[i].name;
+  document.getElementById('swapModal').classList.add('show');
+}
+
+function closeSwapModal(e) {
+  if (!e || e.target === document.getElementById('swapModal')) {
+    document.getElementById('swapModal').classList.remove('show');
+    pendingSwapIndex = null;
+  }
+}
+
+function confirmSwap() {
+  document.getElementById('swapModal').classList.remove('show');
+  const i = pendingSwapIndex;
+  pendingSwapIndex = null;
+  if (i === null) return;
+
   const usedNames = currentRoute.map(b => b.name);
   let pool = BARS.filter(b => !usedNames.includes(b.name));
   if (selectedRegion) pool = pool.filter(b => b.bairro === selectedRegion);
@@ -946,6 +1179,22 @@ function swapBar(i) {
   currentRoute[i] = { ...replacement, visited: false };
   renderRoute();
   showToast(`🔄 Trocado por ${replacement.name}`);
+}
+
+function confirmRecalc() {
+  document.getElementById('recalcModal').classList.add('show');
+}
+
+function closeRecalcModal(e) {
+  if (!e || e.target === document.getElementById('recalcModal')) {
+    document.getElementById('recalcModal').classList.remove('show');
+  }
+}
+
+function doRecalc() {
+  document.getElementById('recalcModal').classList.remove('show');
+  showScreen('home');
+  setTimeout(() => buildRoute(), 300);
 }
 
 function openMaps() {
