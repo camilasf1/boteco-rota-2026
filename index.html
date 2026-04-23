@@ -610,6 +610,10 @@
     <div class="chope-icon">🍻</div>
   </div>
 
+  <div class="section" id="visitedBadgeSection">
+    <div id="visitedCountBadge" style="display:none; background:#1a2e1a; border:1.5px solid var(--green); border-radius:12px; padding:12px 16px; font-size:13px; color:#6fcf97; align-items:center; gap:6px; flex-wrap:wrap;"></div>
+  </div>
+
   <div class="section">
     <div class="section-title">Quantos bares hoje?</div>
     <div class="qty-grid" id="qtyGrid">
@@ -947,12 +951,24 @@ let userLat = null;
 let userLng = null;
 let locMode = 'auto';
 let manualBairro = null;
+let visitedBars = new Set(JSON.parse(localStorage.getItem('visitedBars') || '[]'));
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
   buildRegionFilter();
   document.getElementById('barCountBadge').textContent = `🍺 ${BARS.length} bares`;
+  updateVisitedCount();
 });
+
+function updateVisitedCount() {
+  const count = visitedBars.size;
+  const remaining = BARS.length - count;
+  const el = document.getElementById('visitedCountBadge');
+  if (el) {
+    el.style.display = count > 0 ? 'flex' : 'none';
+    el.innerHTML = `✅ <strong>${count}</strong> já visitados · <strong>${remaining}</strong> restantes &nbsp;<button onclick="clearVisited()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline">limpar</button>`;
+  }
+}
 
 function buildRegionFilter() {
   const bairros = [...new Set(BARS.map(b => b.bairro))].sort();
@@ -1070,8 +1086,12 @@ function buildRoute() {
 
 function generateRoute() {
   let pool = [...BARS];
+  // Exclude already visited bars (unless all are visited)
+  const unvisited = pool.filter(b => !visitedBars.has(b.name));
+  if (unvisited.length >= selectedQty) pool = unvisited;
+
   if (selectedRegion) pool = pool.filter(b => b.bairro === selectedRegion);
-  if (pool.length < selectedQty) pool = [...BARS];
+  if (pool.length < selectedQty) pool = unvisited.length > 0 ? unvisited : [...BARS];
 
   // Add distance to each bar
   pool = pool.map(b => {
@@ -1137,8 +1157,24 @@ function renderRoute() {
 
 function toggleVisit(i) {
   currentRoute[i].visited = !currentRoute[i].visited;
+  const barName = currentRoute[i].name;
+  if (currentRoute[i].visited) {
+    visitedBars.add(barName);
+    showToast(`🍺 ${barName} visitado!`);
+  } else {
+    visitedBars.delete(barName);
+  }
+  localStorage.setItem('visitedBars', JSON.stringify([...visitedBars]));
+  updateVisitedCount();
   renderRoute();
-  if (currentRoute[i].visited) showToast(`🍺 ${currentRoute[i].name} visitado!`);
+}
+
+function clearVisited() {
+  if (!confirm('Limpar todos os bares visitados?')) return;
+  visitedBars.clear();
+  localStorage.removeItem('visitedBars');
+  updateVisitedCount();
+  showToast('🗑️ Histórico limpo!');
 }
 
 let pendingSwapIndex = null;
